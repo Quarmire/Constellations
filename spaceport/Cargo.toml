@@ -1,0 +1,8 @@
+[package]
+name = "spaceport"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cozo = { version = "0.7.6", features = ["storage-rocksdb"] }
+zenoh = "0.11.0"
