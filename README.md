@@ -1,1 +1,1 @@
-# Constellations - A distributed knowledge system
+# Constellations, a library for building distributed knowledge
