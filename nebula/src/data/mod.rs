@@ -1,6 +1,22 @@
+mod block;
 mod blueprint;
+mod assembly;
 
-trait Save {
+
+
+pub trait Request {
+
+}
+
+pub trait Transfer {
+
+}
+
+pub trait Sync {
+
+}
+
+pub trait Asset<T> {
     
 }
 

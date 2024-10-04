@@ -1,3 +1,7 @@
+use super::Asset;
+
+mod text;
+
 /// A block is a unit of stateless data.
 pub struct Block<T> {
     ulid: String,
@@ -7,6 +11,8 @@ pub struct Block<T> {
     context: String,
     metadata: String,
 }
+
+
 
 // Storage is important!  Design decisions here are heavy.
 // We want fast retrieval and storage but also the ability to query
