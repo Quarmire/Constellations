@@ -7,6 +7,27 @@ use cola::{Deletion, EncodedReplica, Replica, ReplicaId};
 use serde::{Deserialize, Serialize};
 
 use postcard;
+use ulid::Ulid;
+
+use crate::data::Asset;
+
+use super::Block;
+
+impl Block for Text {
+    fn create() {
+
+    }
+    
+    fn destroy() {}
+    
+    fn import() {}
+    
+    fn export() {}
+}
+
+impl Asset for Text {
+    
+}
 
 // Text content holds arbitrary text data that is able to be
 // synchronized across spaceports.
