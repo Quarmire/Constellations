@@ -1,15 +1,25 @@
-use super::Asset;
-
 mod text;
 
 /// A block is a unit of stateless data.
-pub struct Block<T> {
-    ulid: String,
-    name: Option<String>,
-    content: T,
-    holder: String,
-    context: String,
-    metadata: String,
+// pub struct Block<T> {
+//     ulid: String,
+//     name: Option<String>,
+//     content: T,
+//     holder: String,
+//     context: String,
+//     metadata: String,
+// }
+
+pub trait Block {
+    /// Create a new block
+    fn create() {}
+    /// Destroy a block
+    fn destroy() {}
+    /// Create a block from resources outside the spaceport i.e.,
+    /// documents
+    fn import() {}
+    /// Send a block to consumers outside the spaceport
+    fn export() {}
 }
 
 
