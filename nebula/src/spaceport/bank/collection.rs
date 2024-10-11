@@ -1,24 +1,39 @@
-/// An unstructured list of assets for internal use by banks
-/// to manage asset distribution across a star system.  The
-/// complete collection data structure is stored in the local
-/// database.  It can be shared with other banks by definition
-/// or request.
+use std::{collections::HashMap, io};
+
+use ulid::Ulid;
+
+use crate::data::{Asset, AssetType};
+
+/// A list of asset ids that can be shared between spaceports.
 struct Collection {
-    // Collection ID
-    // Collection Name
-    // Hashmap <Asset ID, Option<Asset>>
+    id: Ulid,
+    name: String,
+    assets: HashMap<Ulid, AssetType>
 }
 
 impl Collection {
+    /// Create a new collection
     fn new() -> Collection {
-        Collection {  }
+        todo!()
+    }
+    /// Fork an exisiting collection
+    fn fork() -> Collection {
+        todo!()
+    }
+    /// Load a collection from file
+    fn from_file() -> io::Result<Collection> {
+        todo!()
+    }
+    /// Load a collection from database
+    fn from_bank() -> io::Result<Collection> {
+        todo!()
     }
 
-    fn add_asset() {
+    fn add_asset(id: Ulid) {
 
     }
 
-    fn remove_asset() {
+    fn remove_asset(id: Ulid) {
 
     }
 
