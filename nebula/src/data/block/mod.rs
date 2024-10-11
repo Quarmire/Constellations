@@ -1,4 +1,4 @@
-mod text;
+pub mod text;
 
 /// A block is a unit of stateless data.
 // pub struct Block<T> {
@@ -10,17 +10,10 @@ mod text;
 //     metadata: String,
 // }
 
-pub trait Block {
-    /// Create a new block
-    fn create() {}
-    /// Destroy a block
-    fn destroy() {}
-    /// Create a block from resources outside the spaceport i.e.,
-    /// documents
-    fn import() {}
-    /// Send a block to consumers outside the spaceport
-    fn export() {}
-}
+/// A block implies building and connecting individual pieces to form
+/// a larger whole.
+pub trait Block {}
+
 
 
 
