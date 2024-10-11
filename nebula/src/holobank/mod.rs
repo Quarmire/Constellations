@@ -1,13 +1,13 @@
 use std::{fmt::Display, fs::File, io::{BufReader, BufWriter}};
 
+use asset::{Asset, AssetError, Holographable, Materializable};
 use cozo::DbInstance;
 use serde::{Deserialize, Serialize};
 use ulid::Ulid;
 use chrono::{DateTime, Utc};
 
-use crate::data::{Asset, AssetError, Holographable, Materializable};
-
 mod collection;
+mod asset;
 
 /// Banks hold and manage assets.  They do not have communication
 /// facilities of their own.  Relies on spaceport.

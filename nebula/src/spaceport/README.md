@@ -1,4 +1,6 @@
-# Spaceport - A component of Constellations, a distributed knowledge framework
+# Spaceport - A communication and transport service
+
+A component of Constellations, a distributed knowledge framework
 
 Facilitates the exchange of blocks between celestial bodies by giving ships a place to dock.
 

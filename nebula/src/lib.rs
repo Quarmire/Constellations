@@ -1,3 +1,2 @@
-mod core;
-pub mod data;
+pub mod holobank;
 pub mod spaceport;

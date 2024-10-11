@@ -2,7 +2,8 @@ use std::{collections::HashMap, io};
 
 use ulid::Ulid;
 
-use crate::data::{Asset, AssetType};
+use super::asset::AssetType;
+
 
 /// A list of asset ids that can be shared between spaceports.
 struct Collection {
