@@ -1,3 +1,3 @@
 mod core;
-mod data;
-mod spaceport;
+pub mod data;
+pub mod spaceport;
