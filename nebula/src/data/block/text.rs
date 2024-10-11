@@ -1,32 +1,70 @@
 use std::ops::Range;
-
 use std::vec;
-
 use cola::{Deletion, EncodedReplica, Replica, ReplicaId};
-
 use serde::{Deserialize, Serialize};
-
 use postcard;
 use ulid::Ulid;
-
-use crate::data::Asset;
-
+use crate::data::{Asset, Holographable, Materializable};
 use super::Block;
 
-impl Block for Text {
-    fn create() {
+impl Asset for Text {
+    fn id(&self) -> Ulid {
+        todo!()
+    }
 
+    fn name(&self) {
+        todo!()
+    }
+
+    fn tag(&self) {
+        todo!()
+    }
+
+    fn untag(&self) {
+        todo!()
+    }
+
+    fn flag(&self) {
+        todo!()
+    }
+
+    fn unflag(&self) {
+        todo!()
+    }
+
+    fn release(&self) {
+        todo!()
+    }
+
+    fn derive() -> Self {
+        todo!()
     }
     
-    fn destroy() {}
+    fn upload() {
+        todo!()
+    }
     
-    fn import() {}
+    fn download() -> Self {
+        todo!()
+    }
     
-    fn export() {}
+    fn fork() -> Self {
+        todo!()
+    }
 }
 
-impl Asset for Text {
-    
+impl Block for Text {}
+
+impl Holographable for Text {
+    fn update() {
+        todo!()
+    }
+}
+
+impl Materializable for Text {
+    fn scan() {
+        todo!()
+    }
 }
 
 // Text content holds arbitrary text data that is able to be
