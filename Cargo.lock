@@ -2223,6 +2223,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "sha2",
+ "tracing",
  "ulid",
  "uuid",
  "zenoh 1.0.0-beta.4",
