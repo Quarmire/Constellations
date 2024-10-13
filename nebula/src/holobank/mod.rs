@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 
 mod collection;
 mod asset;
+mod schema;
 
 /// Banks hold and manage assets.  They do not have communication
 /// facilities of their own.  Relies on spaceport.

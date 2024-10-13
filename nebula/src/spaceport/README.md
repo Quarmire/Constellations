@@ -28,3 +28,10 @@ Structures and facilities can develop around a spaceport over time.
 # Implementation
 Spaceports are defined in a schema
 This determines the capabilities of the spaceport
+
+# More
+Spaceports can exist on all celestial bodies (static user devices) or capital ships (mobile user devices).
+
+Celestial bodies rarely move to different systems whereas captial ships often travel between systems.
+
+A spaceport does not have to support extra facilities like holobanks, i.e., comets (embedded devices).

@@ -1,11 +1,13 @@
 use std::{io, str::FromStr};
 use tracing;
 
+use ulid::Ulid;
 use zenoh::{self, config::ZenohId, Config};
 
 use crate::holobank;
 use holobank::HoloBank;
 
+/// Folder structure - ./nebula/{system_name}/{spaceport_name}
 const ROOT_DIR: &str = "./nebula";
 const BANK_DATA: &str = "holobank";
 
@@ -19,18 +21,22 @@ pub struct Spaceport {
 
     // Has two means of communication: fast messages (radio) or
     // large payloads (ships)
-    
-    z_session: zenoh::Session,
-    bank: HoloBank
+    id: Ulid,
+    name: String,
+    transport: zenoh::Session,
+    bank: Option<HoloBank>,
 }
 
 impl Spaceport {
     /// Build a new spaceport.  There can be multiple spaceports on a
     /// celestial body but only a single spaceport per process.
-    pub async fn new() -> Spaceport {
+    pub async fn new(name: &str) -> Spaceport {
         let config = Spaceport::configure().unwrap();
         let z_session = zenoh::open(config).await.unwrap();
         let bank = HoloBank::new("./test");
+
+        // look up system name
+        // if system is new, name the system
 
         Spaceport {
             z_session,
@@ -38,7 +44,7 @@ impl Spaceport {
         }
     }
     /// Open essential docks and facilities.
-    pub async fn open() -> Spaceport {
+    pub async fn open(name: &str) -> Spaceport {
         todo!()
     }
     /// Close all docks and put facilities into hibernation.
