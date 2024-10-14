@@ -10,7 +10,7 @@ mod collection;
 mod asset;
 mod schema;
 
-/// Banks hold and manage assets.  They do not have communication
+/// Banks hold assets and manage access.  They do not have communication
 /// facilities of their own.  Relies on spaceport.
 #[derive(Serialize, Deserialize)]
 pub struct HoloBank {
@@ -39,7 +39,7 @@ impl HoloBank {
         let vault = DbInstance::new("rocksdb", path, "")
         .expect(format!("Failed to load rocksdb DbInstance from {}", path).as_str());
         let cache = DbInstance::new("mem", "", "")
-        .expect("Failed to create in-memory DbInstance.#[tokio::main]");
+        .expect("Failed to create in-memory DbInstance.");
 
         HoloBank::setup_vault(&vault);
         HoloBank::setup_cache(&cache);
@@ -126,14 +126,28 @@ impl HoloBank {
     }
     /// Initializes vault stored relations
     fn setup_vault(db: &DbInstance) {
-
+        db.run_default(schema::COMMMANDER_SCHEMA);
+        db.run_default(schema::ASSET_SCHEMA);
+        db.run_default(schema::NAME_SCHEMA);
+        db.run_default(schema::CONTENT_SCHEMA);
+        db.run_default(schema::OWNERSHIP_SCHEMA);
+        db.run_default(schema::SNAPSHOT_SCHEMA);
+        db.run_default(schema::HISTORY_SCHEMA);
+        db.run_default(schema::CONNECTION_SCHEMA);
+        db.run_default(schema::TAG_SCHEMA);
+        db.run_default(schema::FLAG_SCHEMA);
+        db.run_default(schema::COLLECTION_SCHEMA);
+        db.run_default(schema::SPACEPORT_SCHEMA);
+        db.run_default(schema::SYSTEM_SCHEMA);
+        db.run_default(schema::STARMAP_SCHEMA);
     }
-    /// Checks if Holobank ID matches DbInstance ID
+    /// Checks if Holobank belongs to spaceport
     fn verify_vault(db: &DbInstance) {
-
+        todo!()
     }
     /// Initializes cache stored relations
     fn setup_cache(db: &DbInstance) {
-
+        db.run_default(schema::CONTENT_SCHEMA);
+        db.run_default(schema::HISTORY_SCHEMA);
     }
 }
