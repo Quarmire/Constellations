@@ -1774,6 +1774,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "holobank"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "cola",
+ "cozo",
+ "heapless 0.8.0",
+ "postcard",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "sha2",
+ "tracing",
+ "ulid",
+ "uuid",
+ "zenoh 1.0.0-rc.1",
+]
+
+[[package]]
 name = "home"
 version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3893,10 +3912,19 @@ dependencies = [
 name = "spaceport"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "cola",
  "cozo",
- "nebula",
- "tokio",
- "zenoh 0.11.0",
+ "heapless 0.8.0",
+ "postcard",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "sha2",
+ "tracing",
+ "ulid",
+ "uuid",
+ "zenoh 1.0.0-rc.1",
 ]
 
 [[package]]
@@ -4701,6 +4729,16 @@ checksum = "29790946404f91d9c5d06f9874efddea1dc06c5efe94541a7d6863108e3a5e4b"
 dependencies = [
  "same-file",
  "winapi-util",
+]
+
+[[package]]
+name = "warpgate"
+version = "0.1.0"
+dependencies = [
+ "cozo",
+ "nebula",
+ "tokio",
+ "zenoh 0.11.0",
 ]
 
 [[package]]

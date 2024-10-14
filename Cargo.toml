@@ -3,7 +3,9 @@ resolver = "1"
 
 members = [
     "nebula",
+    "holobank",
     "spaceport",
+    "warpgate",
     "spacecraft/celestia-tui",
 ]
 
