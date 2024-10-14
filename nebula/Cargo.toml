@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 chrono = { version = "0.4.38", features = ["serde"] }
 cola = { version = "0.4.5", features = ["encode", "serde"] }
-cozo = { path = "~/cozo/cozo-core", features = ["storage-rocksdb"] }
+cozo = { path = "../../cozo/cozo-core", features = ["storage-rocksdb"] }
 heapless = "0.8.0"
 postcard = { version = "1.0.10", features = ["alloc"] }
 serde = "1.0.210"
