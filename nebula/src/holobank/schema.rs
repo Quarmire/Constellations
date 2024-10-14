@@ -1,45 +1,51 @@
 pub const COMMMANDER_SCHEMA: &str = "
     :create commander {
         id: Ulid,
-        name: String,
+        username: String,
+        birthdate: String,
     }
 ";
 
+/// Asset identification
 pub const ASSET_SCHEMA: &str = "
     :create asset {
         asset_id: Ulid,
         name: String? default null,
         =>
         asset_type: String,
+        time_registered: Int,
     }
 ";
 
 /// Associate one or more names for all ids except assets.
 /// Name associations are tied to the commander.
-/// 
 pub const NAME_SCHEMA: &str = "
     :create name {
         id: Ulid,
         name: String,
         =>
-        by: Ulid
+        by: Ulid,
+        time_named: Int,
     }
 ";
 
+/// Asset content.  Also used in in-memory database.
 pub const CONTENT_SCHEMA: &str = "
     :create content {
         asset_id: Ulid,
         =>
         content_type: String,
         content: Any,
+        time_attached: Int,
     }
 ";
 
-// Owner of anything, i.e., assets and spaceports
+// Ownership for all things, i.e., assets and spaceports
 pub const OWNERSHIP_SCHEMA: &str = "
     :create owner {
         id: Ulid,
         commander_id: Ulid,
+        time: Validity,
     }
 ";
 
@@ -65,7 +71,7 @@ pub const HISTORY_SCHEMA: &str = "
     }
 ";
 
-/// An edge between nodes which can be anything with an ULID identifier.
+/// A directed edge between nodes which can be anything with an ULID identifier.
 /// Type describes the connection; derivation, fork, IP, etc.
 pub const CONNECTION_SCHEMA: &str = "
     :create connection {
@@ -87,7 +93,7 @@ pub const TAG_SCHEMA: &str = "
     }
 ";
 
-/// Flags signal actions for an asset.
+/// Flags signal actions/states for an asset.
 pub const FLAG_SCHEMA: &str = "
     :create flags {
         asset_id: Ulid,
@@ -110,21 +116,16 @@ pub const ACCESS_SCHEMA: &str = "
     }
 ";
 
-/// A collection consists of assets under a common identifier.
-pub const COLLECTION_ID_SCHEMA: &str = "
-    :create collection_id {
-        collection_id: Ulid,
-    }
-";
-
 /// Depending on the asset type, the relation between asset and collection is different.
 /// A block is a part of the collection.
-/// A blueprint is associated with the collection.
-/// An assembly is associated with the blueprints in the collection.
+/// A blueprint is associated with the blocks of the collection.
+/// An assembly is associated with a blueprint in the collection.
 pub const COLLECTION_SCHEMA: &str = "
     :create collection {
         asset_id: Ulid,
         collection_id: Ulid,
+        =>
+        time_created: Int,
     }
 ";
 
@@ -135,30 +136,26 @@ pub const SPACEPORT_SCHEMA: &str = "
         host_name: String,
         host_type: String,
         =>
+        time_created: Int,
         collections: [Ulid]?,
         last_visited_system: Ulid,
     }
 ";
 
+/// A system encompasses the entirety of a LAN or P2P network.
+/// The info attribute are landmarks that identifies a system.
+/// The protocol attribute enables communication in the system.
 pub const SYSTEM_SCHEMA: &str = "
     :create system {
         system_id: Ulid,
         is_star_system: Bool,
-        _date: Validity,
         =>
-        network_info: Json,
+        info: Json,
+        protocol: Json,
     }
 ";
 
-/// Zenoh configuration specific to each system
-pub const SYSTEM_PROTOCOL_SCHEMA: &str = "
-    :create system_protocol {
-        system_id: Ulid,
-        =>
-        config: Json,
-    }
-";
-
+/// Mapping known spaceports to known systems.
 pub const STARMAP_SCHEMA: &str = "
     :create starmap {
         system_id: Ulid,
