@@ -1,3 +1,14 @@
+/// Stores holobank information
+pub const HOLOBANK_SCHEMA: &str = "
+    :create holobank {
+        id: Ulid,
+        =>
+        spaceport_id: Ulid,
+        time_created: Int,
+    }
+";
+
+/// Users
 pub const COMMMANDER_SCHEMA: &str = "
     :create commander {
         id: Ulid,
@@ -120,12 +131,13 @@ pub const ACCESS_SCHEMA: &str = "
 /// A block is a part of the collection.
 /// A blueprint is associated with the blocks of the collection.
 /// An assembly is associated with a blueprint in the collection.
+/// Collection ULID encodes the time collection is created.
 pub const COLLECTION_SCHEMA: &str = "
     :create collection {
         asset_id: Ulid,
         collection_id: Ulid,
         =>
-        time_created: Int,
+        time_added: Int,
     }
 ";
 
