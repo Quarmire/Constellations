@@ -22,6 +22,8 @@ The set of services that have to be provided by claimants are similar to DCE-RPC
 
 These services allow systems to build a federation of systems.
 
+Spaceports that belong to the governing entity of a star system are called starports.
+
 
 # Galaxies
 An overlay network for star systems
