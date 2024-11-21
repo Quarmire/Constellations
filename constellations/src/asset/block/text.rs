@@ -4,7 +4,7 @@ use cola::{Deletion, EncodedReplica, Replica, ReplicaId};
 use serde::{Deserialize, Serialize};
 use postcard;
 use ulid::Ulid;
-use crate::holobank::{Asset, Holographable, Materializable};
+use crate::asset::{Asset, Holographable, Materializable};
 use super::Block;
 
 impl Asset for Text {

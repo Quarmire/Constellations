@@ -141,7 +141,7 @@ pub const COLLECTION_SCHEMA: &str = "
     }
 ";
 
-/// Spaceports can be hosted on planets or ships.
+/// Spaceports can be hosted on celestia or citadels.
 pub const SPACEPORT_SCHEMA: &str = "
     :create spaceport {
         spaceport_id: Ulid,

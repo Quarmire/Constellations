@@ -1,4 +1,23 @@
-use nebula::spaceport;
+use ulid::Ulid;
+
+pub struct System {
+    id: Ulid,
+    name: Option<Name>,
+}
+
+pub enum Name {
+    Star(String), // claimed system
+    Fleet(String), // pervasive system
+    Alias(String), // free system
+}
+
+pub enum Host {
+    Citadel, // mobile devices
+    Spacecraft, // mobile embedded devices
+    Celestial, // system-bound stationary devices
+}
+
+
 use tokio;
 
 #[tokio::main]
@@ -30,7 +49,6 @@ async fn main() {
     // To the user, it will like like their running application just appeared on another computer.
     // If not needed at any spaceport, service ships will stay by the warpgate ready to go.
 
-    let spaceport = spaceport::Spaceport::new().await;
 
 }
 
