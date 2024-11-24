@@ -3,7 +3,7 @@ resolver = "1"
 
 members = [
     "constellations",
-    "celestia",
+    "celestiad",
     "spacecraft/celestia-tui",
 ]
 

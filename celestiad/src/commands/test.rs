@@ -30,19 +30,5 @@ pub fn handle(matches: &ArgMatches, settings: &Settings) -> anyhow::Result<()> {
     println!("- user: test_user");
     println!("- pass: 12345");
 
-    open_spaceport(name, port, settings)?;
-
-    Ok(())
-}
-
-fn open_spaceport(name: &str, port: u16, settings: &Settings) -> anyhow::Result<()> {
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?
-        .block_on(async move {
-            let _ = Spaceport::open(name, port, settings).await;
-            Ok::<(), anyhow::Error>(())
-        })?;
-        
     Ok(())
 }

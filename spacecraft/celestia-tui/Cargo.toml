@@ -5,8 +5,7 @@ edition = "2021"
 
 [dependencies]
 crossterm = "0.28.1"
-iceoryx2 = { version = "0.4.1", features = ["logger_tracing"] }
-ratatui = "0.28.1"
+ratatui = "0.29.0"
 scribe = "0.8.4"
 serde = "1.0.210"
-tui-textarea = "0.6.1"
+tui-textarea = { version = "0.7.0", features = ["search"] }

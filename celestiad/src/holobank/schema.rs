@@ -8,10 +8,19 @@ pub const HOLOBANK_SCHEMA: &str = "
     }
 ";
 
+/// Distributed Identity; Not implemented yet
+pub const DID_SCHEMA: &str = "
+    :create did {
+        did: Ulid,
+        =>
+        document: Json,
+    }
+";
+
 /// Users
 pub const COMMMANDER_SCHEMA: &str = "
     :create commander {
-        id: Ulid,
+        commander_id: Ulid,
         username: String,
         birthdate: String,
     }
@@ -22,8 +31,10 @@ pub const ASSET_SCHEMA: &str = "
     :create asset {
         asset_id: Ulid,
         name: String? default null,
+        derived_from: Ulid? defualt null,
         =>
         asset_type: String,
+        derivation_type: String? default null,
         time_registered: Int,
     }
 ";
@@ -54,8 +65,8 @@ pub const CONTENT_SCHEMA: &str = "
 // Ownership for all things, i.e., assets and spaceports
 pub const OWNERSHIP_SCHEMA: &str = "
     :create owner {
-        id: Ulid,
-        commander_id: Ulid,
+        entity_id: Ulid,
+        owner_id: Ulid,
         time: Validity,
     }
 ";
@@ -114,16 +125,16 @@ pub const FLAG_SCHEMA: &str = "
     }
 ";
 
-/// Records asset materializations by commander at some spaceport and at some time.
+/// Records asset materializations AT spaceport IN spacecraft BY commander at some time.
 /// Also records which asset was last materialized prior to materializing this one.
-pub const ACCESS_SCHEMA: &str = "
-    :create access {
+pub const LEDGER_SCHEMA: &str = "
+    :create ledger {
         asset: Ulid,
         time: Validity,
         =>
-        materialized_by: Ulid,
         materialized_at: Ulid,
-        coming_from: Ulid,
+        materialized_in: Ulid?,
+        materialized_by: Ulid?,
     }
 ";
 
@@ -149,7 +160,6 @@ pub const SPACEPORT_SCHEMA: &str = "
         host_type: String,
         =>
         time_created: Int,
-        collections: [Ulid]?,
         last_visited_system: Ulid,
     }
 ";
