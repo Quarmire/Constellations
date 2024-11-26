@@ -5,5 +5,9 @@
   },
   "root": {
     "directory": "/home/pmle/.constellations"
+  },
+  "llm": {
+    "llm_ip": "10.10.10.11",
+    "llm_port": 9090
   }
 }

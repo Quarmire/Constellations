@@ -30,11 +30,11 @@ pub const COMMMANDER_SCHEMA: &str = "
 pub const ASSET_SCHEMA: &str = "
     :create asset {
         asset_id: Ulid,
-        name: String? default null,
-        derived_from: Ulid? defualt null,
+        name: String?,
+        derived_from: Ulid?,
         =>
         asset_type: String,
-        derivation_type: String? default null,
+        derivation_type: String?,
         time_registered: Int,
     }
 ";

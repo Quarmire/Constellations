@@ -72,22 +72,22 @@ impl Materializable for Text {
 // By default, all blocks follow the single-holder principle,
 // but text can enable simultaneous editing with CRDTs.
 
-struct Text {
-    buffer: String,
+pub struct Text {
+    pub buffer: String,
     crdt: Replica,
     history: Vec<Edit>,
 }
 
 #[derive(Serialize, Deserialize)]
-struct EncodedText {
-    buffer: String,
+pub struct EncodedText {
+    pub buffer: String,
     crdt: EncodedReplica,
     history: Vec<Edit>,
     assigned_id: u64,
 }
 
 impl Text {
-    fn new<S: Into<String>>(text: S, replica_id: ReplicaId) -> Self {
+    pub fn new<S: Into<String>>(text: S, replica_id: ReplicaId) -> Self {
         let buffer = text.into();
         let crdt = Replica::new(replica_id, buffer.len());
         let history: Vec<Edit> = vec![];
@@ -99,12 +99,12 @@ impl Text {
         Text { buffer: self.buffer.clone(), crdt , history: self.history.clone() }
     }
 
-    fn encode(&self, assigned_id: u64) -> Vec<u8> {
+    pub fn encode(&self, assigned_id: u64) -> Vec<u8> {
         let encoded = self.crdt.encode();
         postcard::to_allocvec(&EncodedText{ buffer: self.buffer.clone(), crdt: encoded, history: self.history.clone(), assigned_id }).unwrap()
     }
 
-    fn insert<S: Into<String>>(&mut self, insert_at: usize, text: S) -> Insertion {
+    pub fn insert<S: Into<String>>(&mut self, insert_at: usize, text: S) -> Insertion {
         let text = text.into();
         self.buffer.insert_str(insert_at, &text);
         let insertion = self.crdt.inserted(insert_at, text.len());
@@ -113,7 +113,7 @@ impl Text {
         edit
     }
 
-    fn delete(&mut self, range: Range<usize>) -> Deletion {
+    pub fn delete(&mut self, range: Range<usize>) -> Deletion {
         self.buffer.replace_range(range.clone(), "");
         let edit = self.crdt.deleted(range);
         self.history.insert(0, Edit::Deleted(edit.clone()));
@@ -121,14 +121,14 @@ impl Text {
     }
 
     // TODO: make this into a gap buffer implementation
-    fn integrate_insertion(&mut self, insertion: Insertion) {
+    pub fn integrate_insertion(&mut self, insertion: Insertion) {
         if let Some(offset) = self.crdt.integrate_insertion(&insertion.crdt) {
             self.buffer.insert_str(offset, &insertion.text); // O(n) operation!
         }
         self.history.insert(0, Edit::Inserted(insertion));
     }
 
-    fn integrate_deletion(&mut self, deletion: Deletion) {
+    pub fn integrate_deletion(&mut self, deletion: Deletion) {
         let ranges = self.crdt.integrate_deletion(&deletion);
         for range in ranges.into_iter().rev() {
             self.buffer.replace_range(range, "");
@@ -148,7 +148,7 @@ impl From<EncodedText> for Text {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-struct Insertion {
+pub struct Insertion {
     text: String,
     crdt: cola::Insertion,
 }
@@ -160,7 +160,7 @@ impl Insertion {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-enum Edit {
+pub enum Edit {
     Inserted(Insertion),
     Deleted(Deletion),
 }

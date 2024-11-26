@@ -2,13 +2,14 @@ mod api;
 
 use std::io;
 use std::net::SocketAddr;
-use crate::settings::Settings;
-use crate::LOCALHOST;
+use crate::{settings::Settings, HolobankRequest};
+use crate::{SpaceportRequest, LOCALHOST};
 
 use anyhow::Result;
+use tokio::task::JoinHandle;
 use ulid::Ulid;
 use tracing::{debug, info};
-use tokio;
+use tokio::{self, sync::mpsc};
 use zenoh::{self, config::{WhatAmI, ZenohId}, Session};
 
 
@@ -16,9 +17,18 @@ const SPACEPORT_DIR: &str = "spaceport";
 const SOCKET_DIR: &str = "/tmp";
 
 #[derive(Clone)]
+pub struct SpaceportState {
+    pub session: Session,
+    pub task_tx: mpsc::Sender<JoinHandle<()>>,
+    pub holobank_tx: mpsc::Sender<HolobankRequest>,
+    pub spaceport_tx: mpsc::Sender<SpaceportRequest>,
+    pub celestiad_state: crate::State,
+}
+
+#[derive(Clone)]
 pub struct Spaceport {
     pub id: Ulid,
-    docks: Session,
+    pub docks: Session,
 }
 
 impl Spaceport {
@@ -46,7 +56,7 @@ impl Spaceport {
         config.transport.link.set_protocols(Some(vec!["unixsock-stream".to_string()]));
         config.listen.endpoints.set([
             "unixsock-stream//tmp/".to_string() +
-            spaceport_id.to_string().as_str() +
+            "test_spaceport" +
             ".sock"
         ].iter().map(|s|s.parse().unwrap()).collect()
         ).unwrap();
@@ -57,12 +67,24 @@ impl Spaceport {
 
     
 
-    async fn serve_api(spaceport: Spaceport, port: u16) {
+    pub async fn serve_api(spaceport: Spaceport, spaceport_tx: mpsc::Sender<SpaceportRequest>, holobank_tx: mpsc::Sender<HolobankRequest>, celestiad_state: crate::State, port: u16) {
+        let (task_tx, task_rx) = mpsc::channel::<JoinHandle<()>>(100);
+        let _ = tokio::spawn(crate::process_join_handles(task_rx));
+
+        let state = SpaceportState {
+            session: spaceport.docks.clone(),
+            task_tx,
+            holobank_tx,
+            spaceport_tx,
+            celestiad_state,
+        };
+
         let addr = SocketAddr::new(
             LOCALHOST,
             port
         );
-        let router = crate::spaceport::api::configure(spaceport);
+
+        let router = crate::spaceport::api::configure(state);
         let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
         axum::serve(listener, router.into_make_service()).await.unwrap();
     }

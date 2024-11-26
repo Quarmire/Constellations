@@ -24,6 +24,13 @@ pub struct ConfigInfo {
 
 #[derive(Debug, Deserialize, Default)]
 #[allow(unused)]
+pub struct Llm {
+    pub llm_ip: Option<String>,
+    pub llm_port: Option<u16>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[allow(unused)]
 pub struct Settings {
     #[serde(default)]
     pub logging: Logging,
@@ -31,6 +38,8 @@ pub struct Settings {
     pub root: Root,
     #[serde(default)]
     pub config: ConfigInfo,
+    #[serde(default)]
+    pub llm: Llm,
 }
 
 impl Settings {
