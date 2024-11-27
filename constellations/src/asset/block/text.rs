@@ -1,6 +1,7 @@
 use std::ops::Range;
 use std::vec;
 use cola::{Deletion, EncodedReplica, Replica, ReplicaId};
+use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use postcard;
 use ulid::Ulid;
@@ -134,6 +135,13 @@ impl Text {
             self.buffer.replace_range(range, "");
         }
         self.history.insert(0, Edit::Deleted(deletion));
+    }
+
+    pub fn encoded_text_from(&self) -> EncodedText {
+        let mut rng = thread_rng();
+        let id = rng.gen();
+        let new = self.fork(id);
+        EncodedText { buffer: new.buffer, crdt: new.crdt.encode(), history: new.history, assigned_id: id }
     }
 }
 

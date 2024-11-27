@@ -27,16 +27,25 @@ pub async fn realtimetext(State(state): State<crate::spaceport::SpaceportState>,
 }
 
 async fn handle_realtime_text_block_updates(user: String, spaceport_session: Session, celestiad_session: Session, id: Ulid, task_tx: mpsc::Sender<JoinHandle<()>>) {
-    let sub_key_expression = user.clone() + "/realtime/block/text/" + id.to_string().as_str();
-    let pub_key_expression = user + "/realtime/block/text/" + id.to_string().as_str();
-    let subscriber = spaceport_session.declare_subscriber(sub_key_expression.as_str()).await.unwrap();
-    let publisher = celestiad_session.declare_publisher(pub_key_expression).await.unwrap();
+    // let sub_key_expression = user.clone() + "/realtime/block/text/" + id.to_string().as_str();
+    // let pub_key_expression = user + "/realtime/block/text/" + id.to_string().as_str();
+    // let out_subscriber = spaceport_session.declare_subscriber(sub_key_expression.as_str()).await.unwrap();
+    // let out_publisher = celestiad_session.declare_publisher(pub_key_expression.clone()).await.unwrap();
+    // let in_subscriber = celestiad_session.declare_subscriber(sub_key_expression.as_str()).await.unwrap();
+    // let in_publisher = spaceport_session.declare_publisher(pub_key_expression).await.unwrap();
     
-    let handle = tokio::spawn(async move {
-        while let Ok(sample) = subscriber.recv_async().await {
-            publisher.put(sample.payload().to_bytes()).await.unwrap();
-        };
-    });
+    // let handle_out = tokio::spawn(async move {
+    //     while let Ok(sample) = out_subscriber.recv_async().await {
+    //         out_publisher.put(sample.payload().to_bytes()).await.unwrap();
+    //     };
+    // });
 
-    task_tx.send(handle).await;
+    // let handle_in = tokio::spawn(async move {
+    //     while let Ok(sample) = in_subscriber.recv_async().await {
+    //         in_publisher.put(sample.payload().to_bytes()).await.unwrap();
+    //     };
+    // });
+
+    // task_tx.send(handle_in).await;
+    // task_tx.send(handle_out).await;
 }

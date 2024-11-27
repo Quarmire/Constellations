@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
+use std::time::Duration;
 
 use cozo::{DataValue, DbInstance, ScriptMutability, UlidWrapper};
 use holobank::Holobank;
@@ -49,7 +50,6 @@ pub const SPACEPORT_SCHEMA: &str = "
         name: String,
         =>
         id: Ulid,
-        path: String,
         open: Bool,
     }
 ";
@@ -109,17 +109,17 @@ pub async fn process_spaceport_requests(mut rx: mpsc::Receiver<SpaceportRequest>
     while let Some(request) = rx.recv().await {
         match request {
             SpaceportRequest::Open { name, response } => {
-                handle_open_spaceport(name, response, state.db.clone()).await;
+                handle_open_spaceport(name, response, state.db.clone(), state.session.clone(), state.task_tx.clone()).await;
             }
         }
     }
 }
 
-async fn handle_open_spaceport(name: String, response: oneshot::Sender<Result<Spaceport>>, db: DbInstance) {
+async fn handle_open_spaceport(name: String, response: oneshot::Sender<Result<Spaceport>>, db: DbInstance, session: Session, task_tx: mpsc::Sender<JoinHandle<()>>) {
     let mut parameters = BTreeMap::new();
     parameters.insert("name".to_string(), DataValue::Str(name.clone().into()));
     match db.run_script(
-        "?[a,b] := *spaceport{id: a, open: b, name: $name}",
+        "?[a] := *spaceport{id: a, name: $name}",
         parameters.clone(),
         ScriptMutability::Mutable
     ) {
@@ -127,20 +127,23 @@ async fn handle_open_spaceport(name: String, response: oneshot::Sender<Result<Sp
             if rows.rows.len() < 1 {
                 let new_id = Ulid::new();
                 let s = Spaceport::open(new_id).await;
+                parameters.insert("id".to_string(), DataValue::Ulid(UlidWrapper(new_id)));
+                let _ = db.run_script(
+                    "?[id, name] <- [[$id, $name]] :put spaceport {id, name}",
+                    parameters,
+                    ScriptMutability::Mutable
+                );
                 response.send(s);
             }
-            else if !rows.rows[0][1].get_bool().unwrap() {
+            else {
                 let id = rows.rows[0][0].get_ulid().unwrap();
                 let s = Spaceport::open(id).await;
                 response.send(s);
             }
-            else {
-                response.send(Err(anyhow!("Spaceport {} already open", name)));
-            }
         },
         Err(e) => {
             response.send(Err(anyhow!("Could not open spaceport {}: {}", name, e)));
-        },
+        }
     }
 }
 

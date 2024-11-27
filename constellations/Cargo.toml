@@ -9,6 +9,7 @@ cola = { version = "0.4.5", features = ["encode", "serde"] }
 cozo = { path = "../../Rust/cozo/cozo-core", features = ["storage-rocksdb"] }
 heapless = "0.8.0"
 postcard = { version = "1.0.10", features = ["alloc"] }
+rand = "0.8.5"
 serde = "1.0.210"
 serde_bytes = "0.11.15"
 serde_json = "1.0.128"

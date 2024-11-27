@@ -157,19 +157,19 @@ impl<'a> Buffer<'a> {
     }
 
     async fn enable_realtime_edit(&mut self, session: Session, user: String) -> io::Result<()> {
+
         if self.realtime {
             self.realtime = false;
             self.realtime_publisher = None;
         }
         else {
-            if self.realtime_publisher.is_none() {
-                let pub_key_expression = user.clone() + "/realtime/block/text/" + self.id.to_string().as_str();
-                
-                let client = reqwest::Client::new();
-                let url = "http://127.0.0.1:9999/v0/realtimetext?user=".to_string() + &user + "&id=" + self.id.to_string().as_str();
-                let res = client.get(url.as_str()).send().await.unwrap();
-                
-                self.realtime_publisher = Some(session.declare_publisher(pub_key_expression).await.unwrap());
+            let key_expression = user.to_string() + "/editor/encodedtext?id=" + self.id.to_string().as_str();
+            let replies = session.get(key_expression.as_str()).await.unwrap();
+            while let Ok(reply) = replies.recv_async().await {
+                let enc_text: EncodedText = serde_json::from_str(String::from_utf8(reply.result().unwrap().payload().to_bytes().to_vec()).unwrap().as_str()).unwrap();
+                let text = Text::from(enc_text);
+                *self.text.lock().await = text;
+                break;
             }
 
             let text_arc = Arc::clone(&self.text);
@@ -181,6 +181,7 @@ impl<'a> Buffer<'a> {
                 let subscriber = session.declare_subscriber(key_expression.as_str()).await.unwrap();
                 while let Ok(sample) = subscriber.recv_async().await {
                     let update = String::from_utf8(sample.payload().to_bytes().to_vec()).unwrap();
+                    // println!("{}", update);
                     let edit: Edit = serde_json::from_str(&update).unwrap();
                     match edit {
                         Edit::Inserted(ins) => {
@@ -194,6 +195,8 @@ impl<'a> Buffer<'a> {
                 }
             });
             self.task_tx.send(subscriber_handle).await.unwrap();
+            
+            self.realtime = true;
         }
         Ok(())
     }
@@ -205,6 +208,7 @@ impl<'a> Buffer<'a> {
         self.textarea = new;
         self.textarea.set_line_number_style(Style::default().fg(Color::DarkGray));
         self.textarea.move_cursor(CursorMove::Jump(u16::try_from(cursor.0).unwrap(), u16::try_from(cursor.1).unwrap()));
+        self.textarea.input(Input { key: Key::Null, ctrl: false, alt: false, shift: false});
     }
 }
 
@@ -216,10 +220,11 @@ struct Editor<'a> {
     message: Option<Cow<'static, str>>,
     chat: LlmBox<'a>,
     session: Session,
+    ext_session: Session,
 }
 
 impl<'a> Editor<'a> {
-    async fn new(session: Session, user: &str) -> io::Result<(Self, mpsc::Receiver<JoinHandle<()>>)> {
+    async fn new(session: Session, ext_session: Session, user: &str) -> io::Result<(Self, mpsc::Receiver<JoinHandle<()>>)> {
         let (tx,rx) = mpsc::channel(100);
         let mut rng = thread_rng();
         let mut blocks: Vec<Buffer<'a>> = Vec::new();
@@ -268,6 +273,7 @@ impl<'a> Editor<'a> {
             message: None,
             chat: LlmBox::default(),
             session: session.clone(),
+            ext_session: ext_session.clone(),
         },
         rx))
     }
@@ -298,7 +304,8 @@ impl<'a> Editor<'a> {
                     ]
                     .as_ref(),
                 );
-
+            
+            let sub_update = *self.blocks[self.current].subscriber_update.lock().await;
             self.term.draw(|f| {
                 let chunks = layout.split(f.area());
 
@@ -313,8 +320,9 @@ impl<'a> Editor<'a> {
                 // Render status line
                 let modified = if block.modified { " [modified]" } else { "" };
                 let realtime = if block.realtime { " [realtime]" } else { "" };
+                let updating = if sub_update { " [updating]" } else { "" };
                 let slot = format!("[{}/{}]", self.current + 1, self.blocks.len());
-                let id = format!(" {}{}{} ", block.id.to_string(), modified, realtime);
+                let id = format!(" {}{}{}{} ", block.id.to_string(), modified, realtime, updating);
                 let (row, col) = textarea.cursor();
                 let cursor = format!("({},{})", row + 1, col + 1);
                 let status_chunks = Layout::default()
@@ -361,6 +369,8 @@ impl<'a> Editor<'a> {
                 };
                 f.render_widget(Paragraph::new(message), chunks[3]);
             })?;
+
+            *self.blocks[self.current].subscriber_update.lock().await = false;
 
             if chat_height > 0 {
                 match crossterm::event::read()?.into() {
@@ -414,7 +424,7 @@ impl<'a> Editor<'a> {
                         ctrl: true,
                         ..
                     } => {
-                        self.blocks[self.current].enable_realtime_edit(self.session.clone(), self.user.clone()).await?;
+                        self.blocks[self.current].enable_realtime_edit(self.ext_session.clone(), self.user.clone()).await?;
                         self.message = Some("Toggled realtime edit!".into());
                     }
                     input => {
@@ -441,7 +451,7 @@ impl<'a> Editor<'a> {
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
                                     let payload = serde_json::to_string(&edit).unwrap();
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(payload).await.unwrap();
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(payload).await.unwrap();
                                 }
                             },
                             Input {
@@ -452,7 +462,7 @@ impl<'a> Editor<'a> {
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
                                     let payload = serde_json::to_string(&edit).unwrap();
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(payload).await.unwrap();
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(payload).await.unwrap();
                                 }
                             },
                             Input {
@@ -462,7 +472,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "c");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -472,7 +482,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "d");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -482,7 +492,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "e");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -492,7 +502,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "f");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -502,7 +512,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "g");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -512,7 +522,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "h");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -522,7 +532,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "i");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -532,7 +542,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "j");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -542,7 +552,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "k");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -552,7 +562,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "l");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -562,7 +572,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "m");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -572,7 +582,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "n");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -582,7 +592,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "o");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -592,7 +602,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "p");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -602,7 +612,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "q");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -612,7 +622,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "r");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -622,7 +632,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "s");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -632,7 +642,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "t");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -642,7 +652,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "u");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -652,7 +662,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "v");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -662,7 +672,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "w");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -672,7 +682,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "x");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -682,7 +692,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "y");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -692,7 +702,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "z");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -724,7 +734,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "C");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -734,7 +744,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "D");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -744,7 +754,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "E");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -754,7 +764,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "F");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -764,7 +774,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "G");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -774,7 +784,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "H");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -784,7 +794,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "I");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -794,7 +804,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "J");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -804,7 +814,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "K");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -814,7 +824,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "L");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -824,7 +834,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "M");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -834,7 +844,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "N");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -844,7 +854,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "O");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -854,7 +864,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "P");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -864,7 +874,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "Q");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -874,7 +884,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "R");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -884,7 +894,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "S");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -894,7 +904,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "T");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -904,7 +914,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "U");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -914,7 +924,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "V");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -924,7 +934,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "W");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -934,7 +944,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "X");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -944,7 +954,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "Y");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -954,7 +964,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "Z");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -964,7 +974,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, " ");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -974,7 +984,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "!");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -984,7 +994,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "@");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -994,7 +1004,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "#");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1004,7 +1014,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "$");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1014,7 +1024,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "%");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1024,7 +1034,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "^");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1034,7 +1044,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "&");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1044,7 +1054,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "*");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1054,7 +1064,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "(");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1064,7 +1074,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, ")");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1074,7 +1084,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "_");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1084,7 +1094,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "-");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1094,7 +1104,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "=");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1104,7 +1114,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "+");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1114,7 +1124,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, ":");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1124,7 +1134,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, ";");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1134,7 +1144,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "\'");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1144,7 +1154,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "\"");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1154,7 +1164,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "?");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1164,7 +1174,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, ".");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1174,7 +1184,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, ",");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1184,7 +1194,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "<");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1194,7 +1204,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, ">");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1204,7 +1214,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "1");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1214,7 +1224,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "2");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1224,7 +1234,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "3");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1234,7 +1244,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "4");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1244,7 +1254,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "5");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1254,7 +1264,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "6");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1264,7 +1274,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "7");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1274,7 +1284,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "8");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1284,7 +1294,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "9");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1294,7 +1304,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "0");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1304,7 +1314,7 @@ impl<'a> Editor<'a> {
                                 let ins = self.blocks[self.current].text.lock().await.insert(sum, "\n");
                                 if self.blocks[self.current].realtime {
                                     let edit = Edit::Inserted(ins);
-                                    self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                    // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                 }
                             },
                             Input {
@@ -1315,7 +1325,7 @@ impl<'a> Editor<'a> {
                                     let del = self.blocks[self.current].text.lock().await.delete((sum-1)..sum);
                                     if self.blocks[self.current].realtime {
                                         let edit = Edit::Deleted(del);
-                                        self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                        // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                     }
                                 }
                             },
@@ -1327,7 +1337,7 @@ impl<'a> Editor<'a> {
                                     let del = self.blocks[self.current].text.lock().await.delete((sum+1)..(sum+2));
                                     if self.blocks[self.current].realtime {
                                         let edit = Edit::Deleted(del);
-                                        self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
+                                        // self.blocks[self.current].realtime_publisher.as_ref().unwrap().put(serde_json::to_string(&edit).unwrap()).await;
                                     }
                                 }
                             },
@@ -1335,10 +1345,10 @@ impl<'a> Editor<'a> {
                         }
                         let buffer = &mut self.blocks[self.current];
                         buffer.modified = buffer.textarea.input(input);
-                        self.blocks[self.current].update().await;
                     }
                 }
             }
+            self.blocks[self.current].update().await;
         }
 
         Ok(())
@@ -1372,8 +1382,15 @@ async fn main() -> io::Result<()> {
     ].iter().map(|s|s.parse().unwrap()).collect()
     ).unwrap();
 
-    let zenoh_session = zenoh::open(config).await.unwrap();
+    let mut config_ext = zenoh::Config::default();
+    config_ext.set_mode(Some(WhatAmI::Peer));
+    config_ext.scouting.multicast.set_enabled(Some(true));
+    config_ext.scouting.gossip.set_enabled(Some(true));
+    config_ext.transport.link.set_protocols(Some(vec!["tcp".to_string()]));
 
-    let (mut editor, task_rx) = Editor::new(zenoh_session.clone(), "test").await.unwrap();
+    let zenoh_session = zenoh::open(config).await.unwrap();
+    let ext_zenoh_session = zenoh::open(config_ext).await.unwrap();
+
+    let (mut editor, task_rx) = Editor::new(zenoh_session.clone(), ext_zenoh_session.clone(), "test").await.unwrap();
     editor.run(task_rx).await
 }

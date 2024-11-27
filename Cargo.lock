@@ -525,6 +525,7 @@ version = "0.1.0"
 dependencies = [
  "constellations",
  "crossterm",
+ "flume",
  "rand",
  "ratatui",
  "reqwest 0.12.9",
@@ -827,6 +828,7 @@ dependencies = [
  "cozo",
  "heapless 0.8.0",
  "postcard",
+ "rand",
  "serde",
  "serde_bytes",
  "serde_json",

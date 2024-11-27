@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, path::Path};
 
 use anyhow::Result;
-use cozo::{DataValue, DbInstance, ScriptMutability, UlidWrapper};
+use cozo::{DataValue, DbInstance, NamedRows, ScriptMutability, UlidWrapper};
 use tracing::{debug, info};
 use ulid::Ulid;
 
@@ -122,6 +122,19 @@ impl Holobank {
             }
         }
         Ok(())
+    }
+
+    pub fn update_content(&self, import_str: String) {
+        info!("Updating content.");
+        let import: BTreeMap<String, NamedRows> = serde_json::from_str(&import_str).unwrap();
+        self.persistent.import_relations(import).unwrap();
+    }
+
+    pub fn export_content(&self) -> String {
+        let content = self.persistent.export_relations(vec!["content"].into_iter());
+        let json_string = serde_json::to_string(&content.unwrap()).unwrap();
+        info!("Exporting content: {}", json_string);
+        json_string
     }
 }
 

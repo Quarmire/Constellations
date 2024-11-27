@@ -1,7 +1,7 @@
 {
   "logging": {
-    "log_level": "debug",
-    "sp_log_level": "debug"
+    "log_level": "info",
+    "sp_log_level": "info"
   },
   "root": {
     "directory": "/home/pmle/.constellations"
